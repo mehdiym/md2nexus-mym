@@ -4,7 +4,6 @@ on:
     branches: [ "latest" ]
     paths:
       - src/**
-      - fixtures/**
       - Cargo.toml
       - Cargo.lock
       - .github/workflows/test.yaml
@@ -20,13 +19,11 @@ jobs:
     name: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
-          override: true
-
-      - uses: actions/cache@v3
+          components: clippy
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
@@ -35,12 +32,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-
-
-      - name: get cargo-nextest on path
-        run: |
-          curl -sL https://get.nexte.st/latest/linux -o nextest.tgz
-          tar xfz nextest.tgz
-          mv cargo-nextest /home/runner/.cargo/bin
-
-      - name: run the tests
-        run: cargo nextest run
+      - name: Lint
+        run: cargo clippy --locked -- -D warnings
+      - name: Run the tests
+        run: cargo test --locked

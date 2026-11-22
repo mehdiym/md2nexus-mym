@@ -2,14 +2,14 @@
 name = "md2nexus"
 version = "0.2.1"
 edition = "2021"
-authors = ["C J Silverio <ceejceej@gmail.com>"]
+authors = ["C J Silverio <ceejceej@gmail.com>", "Mehdi Yousfi-Monod"]
 description = "A command-line tool to convert gfm markdown to NexusMods-flavored bbcode."
 readme = "README.md"
 license = "GPL-3.0"
 categories = ["command-line-utilities"]
 keywords = ["cli", "markdown", "bbcode"]
-repository = "https://github.com/ceejbot/md2nexus"
-homepage = "https://github.com/ceejbot/md2nexus"
+repository = "https://github.com/mehdiym/md2nexus"
+homepage = "https://github.com/mehdiym/md2nexus"
 
 [[bin]]
 name = "md2nexus"
@@ -21,22 +21,6 @@ clap = { version = "4.4.2", features = ["derive", "color", "cargo", "wrap_help"]
 clap_complete = "4.4.1"
 markdown = "1.0.0-alpha.12"
 owo-colors = "3.5.0"
-prettytable = "0.10.0"
 
-# The profile that 'cargo dist' will build with
-[profile.dist]
-inherits = "release"
+[profile.release]
 lto = "thin"
-
-# Config for 'cargo dist'
-[workspace.metadata.dist]
-# The preferred cargo-dist version to use in CI (Cargo.toml SemVer syntax)
-cargo-dist-version = "0.3.0-prerelease.4"
-# CI backends to support (see 'cargo dist generate-ci')
-ci = ["github"]
-# The installers to generate for each app
-installers = []
-# Target platforms to build apps for (Rust target-triple syntax)
-targets = ["x86_64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-pc-windows-msvc", "aarch64-apple-darwin"]
-# Publish jobs to run in CI
-pr-run-mode = "skip"

@@ -5,10 +5,9 @@ use std::path::PathBuf;
 
 use clap::Parser;
 use clap_complete::{generate, Shell};
-use markdown::mdast::{Definition, FootnoteDefinition, Node};
+use markdown::mdast::{AlignKind, Definition, FootnoteDefinition, Node, Table};
 use markdown::{to_mdast, ParseOptions};
 use owo_colors::OwoColorize;
-use prettytable::{Cell, Row, Table};
 
 #[derive(Clone, Debug, Parser)]
 #[clap(name = "md2nexus", version)]
@@ -88,9 +87,8 @@ fn convert_buffer(input: &str) -> String {
 /// State is the worst.
 #[derive(Clone, Debug)]
 struct State {
-    table: Option<Table>,
-    row: Option<Row>,
-    titles: bool,
+    /// Whether the list being rendered is tight (no blank line between its items).
+    tight: bool,
     definitions: Vec<Definition>,
     footnotes: Vec<FootnoteDefinition>,
 }
@@ -98,9 +96,7 @@ struct State {
 impl State {
     pub fn new() -> Self {
         State {
-            table: None,
-            row: None,
-            titles: false,
+            tight: false,
             definitions: Vec::new(),
             footnotes: Vec::new(),
         }
@@ -151,6 +147,56 @@ impl State {
             .join("")
     }
 
+    /// Render an item of a tight list. Nexus turns every newline into a line break, so the
+    /// item's text goes without the newlines of a paragraph: with them, a nested list would
+    /// start after an empty line. A nested list follows the text directly, and nothing follows
+    /// a nested list, which would leave an empty line after it.
+    fn render_tight_item(&mut self, children: &[Node]) -> String {
+        let mut result = String::from("[*]");
+        for child in children {
+            match child {
+                Node::Paragraph(p) => result.push_str(&self.render_nodes(&p.children)),
+                Node::List(_) => result.push_str(self.render_node(child).trim_start()),
+                _ => result.push_str(&self.render_node(child)),
+            }
+        }
+        if !result.ends_with("[/list]") {
+            result.push('\n');
+        }
+        result
+    }
+
+    /// Render a table with Nexus's table tags. It goes on a single line: Nexus turns every newline
+    /// into a line break, which has no place between rows or cells. A column's alignment applies
+    /// to each of its cells. The header row is made of bold `[td]` cells rather than `[th]`,
+    /// which Nexus renders without padding nor borders.
+    fn render_table(&mut self, table: &Table) -> String {
+        let mut result = String::from("\n[table]");
+        for (index, row) in table.children.iter().enumerate() {
+            let Node::TableRow(row) = row else {
+                continue;
+            };
+            result.push_str("[tr]");
+            for (column, cell) in row.children.iter().enumerate() {
+                let content = self.render_node(cell);
+                let content = if index == 0 {
+                    format!("[b]{content}[/b]")
+                } else {
+                    content
+                };
+                let content = match table.align.get(column) {
+                    Some(AlignKind::Center) => format!("[center]{content}[/center]"),
+                    Some(AlignKind::Right) => format!("[right]{content}[/right]"),
+                    _ => content,
+                };
+                result.push_str(&format!("[td]{content}[/td]"));
+            }
+            result.push_str("[/tr]");
+        }
+        result.push_str("[/table]\n");
+        result
+    }
+
     /// Convert a single node type to bbcode, recursing into children if it has any.
     /// This is where all the interesting work is.
     pub fn render_node(&mut self, node: &Node) -> String {
@@ -162,24 +208,25 @@ impl State {
                 format!("[quote]{}[/quote]\n", self.render_nodes(&t.children))
             }
             Node::List(list) => {
-                if list.ordered {
-                    format!("\n[list=1]\n{}[/list]", self.render_nodes(&list.children))
+                let outer = self.tight;
+                self.tight = !list.spread;
+                let items = self.render_nodes(&list.children);
+                self.tight = outer;
+                let open = if list.ordered { "[list=1]" } else { "[list]" };
+                format!("\n{open}\n{items}[/list]")
+            }
+            Node::ListItem(item) => {
+                if self.tight && !item.spread {
+                    self.render_tight_item(&item.children)
                 } else {
-                    format!("\n[list]\n{}[/list]", self.render_nodes(&list.children))
+                    format!("[*]{}", self.render_nodes(&item.children))
                 }
             }
-            Node::ListItem(t) => format!("[*]{}", self.render_nodes(&t.children)),
             Node::Break(_) => "\n\n".to_string(),
             Node::Code(t) => {
                 format!("\n[code]{}[/code]\n", t.value)
             }
-            Node::InlineCode(t) => {
-                if self.table.is_some() {
-                    t.value.clone()
-                } else {
-                    format!("[font=Courier New]{}[/font]", t.value)
-                }
-            }
+            Node::InlineCode(t) => format!("[font=Courier New]{}[/font]", t.value),
             Node::Delete(t) => format!("[s]{}[/s]", self.render_nodes(&t.children)),
             Node::Emphasis(t) => format!("[i]{}[/i]", self.render_nodes(&t.children)),
             Node::Strong(t) => format!("[b]{}[/b]", self.render_nodes(&t.children)),
@@ -205,48 +252,10 @@ impl State {
             Node::Yaml(t) => format!("\n[code]{}[/code]\n\n", t.value),
 
             // Tables
-            Node::Table(t) => {
-                let mut table = Table::new();
-                table.set_format(*prettytable::format::consts::FORMAT_NO_BORDER_LINE_SEPARATOR);
-                self.table = Some(table);
-                self.render_nodes(&t.children);
-                if let Some(finished) = self.table.clone() {
-                    self.titles = false;
-                    self.table = None;
-                    let result = format!("\n[font=Courier][code]{finished}[/code][/font]\n");
-                    result
-                } else {
-                    "".to_string()
-                }
-            }
-            Node::TableRow(row) => {
-                let tablerow = Row::new(Vec::new());
-                self.row = Some(tablerow);
-                self.render_nodes(&row.children);
-                if let Some(finished) = self.row.clone() {
-                    if let Some(ref table) = self.table {
-                        let mut table = table.clone();
-                        if !self.titles {
-                            table.set_titles(finished);
-                            self.titles = true
-                        } else {
-                            table.add_row(finished);
-                        }
-                        self.table = Some(table);
-                    }
-                }
-                "".to_string()
-            }
-            Node::TableCell(cell) => {
-                if let Some(ref row) = self.row {
-                    let mut cloned = row.clone();
-                    let string = self.render_nodes(&cell.children);
-                    let cell = Cell::new(string.as_str());
-                    cloned.add_cell(cell);
-                    self.row = Some(cloned);
-                }
-                "".to_string()
-            }
+            Node::Table(table) => self.render_table(table),
+            // Reached only through render_table, which renders rows and cells itself.
+            Node::TableRow(row) => self.render_nodes(&row.children),
+            Node::TableCell(cell) => self.render_nodes(&cell.children),
 
             // the following markup types have meh support
             Node::FootnoteReference(footie) => {
@@ -300,6 +309,7 @@ fn license() {
     println!(
         r#"
 md2nexus Copyright (C) 2023 C J Silverio
+Fork changes Copyright (C) 2026 Mehdi Yousfi-Monod
 
 This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -364,4 +374,34 @@ fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::convert_buffer;
+
+    #[test]
+    fn nested_list_follows_its_item_text() {
+        assert_eq!(
+            convert_buffer("- a\n  - b\n- c\n"),
+            "[list]\n[*]a[list]\n[*]b\n[/list][*]c\n[/list]"
+        );
+    }
+
+    #[test]
+    fn loose_list_keeps_its_paragraphs() {
+        assert_eq!(
+            convert_buffer("- a\n\n- b\n"),
+            "[list]\n[*]a\n[*]b\n[/list]"
+        );
+    }
+
+    #[test]
+    fn table_uses_table_tags() {
+        assert_eq!(
+            convert_buffer("| A | B |\n|:---|---:|\n| `x` | **y** |\n"),
+            "[table][tr][td][b]A[/b][/td][td][right][b]B[/b][/right][/td][/tr]\
+             [tr][td][font=Courier New]x[/font][/td][td][right][b]y[/b][/right][/td][/tr][/table]"
+        );
+    }
 }

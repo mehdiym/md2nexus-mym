@@ -3,15 +3,15 @@
 help:
 	@just -l
 
-# Run all tests with nextest
+# Run all tests
 test:
-	@cargo nextest run
+	@cargo test
 
 # Lint and stuff.
 ci:
 	@cargo fmt
 	@cargo clippy
-	@cargo nextest run
+	@cargo test
 
 # Build docs and open them in your browser.
 docs:
@@ -21,7 +21,7 @@ docs:
 install:
 	@cargo install --path .
 
-# Set the crate version and tag the repo to match. Requires tomato-toml.
+# Set the crate version and tag the repo to match.
 tag VERSION:
 	#!/usr/bin/env bash
 	version="{{VERSION}}"
@@ -31,7 +31,7 @@ tag VERSION:
 		echo "There are uncommitted changes! Cowardly refusing to act."
 		exit 1
 	fi
-	tomato set package.version "$version" Cargo.toml
+	sed -i "s/^version = \".*\"/version = \"$version\"/" Cargo.toml
 	# update the lock file
 	cargo check
 	git commit Cargo.toml Cargo.lock -m "${version}"

@@ -2,19 +2,21 @@
 
 This is a command-line tool for converting single files or directories of files from Markdown to valid [Nexusmods](https://nexusmods.com) [bbcode](https://wiki.nexusmods.com/index.php/Formating_and_BBCode_in_Descriptions). The Nexus bbcode editors are hell to use if you're writing any complex documentation.
 
-To install, you can download a MacOS, Linux, or Windows prebuilt executable from [the releases](https://github.com/ceejbot/md2nexus/releases/latest). Or you can use Homebrew:
+## About this fork
+
+This is a fork of [ceejbot/md2nexus](https://github.com/ceejbot/md2nexus) by C J Silverio, maintained by Mehdi Yousfi-Monod since upstream went quiet after version 0.2.1. Changes since 0.2.1:
+
+- Nested lists no longer start after an empty line on the Nexus page: in a tight list, an item's text and its nested list are no longer separated by newlines, each of which Nexus renders as a line break. Loose lists (blank lines between items) keep the previous rendering.
+- Tables are rendered with Nexus's `[table]` tags instead of aligned text in a code block: markup inside cells (bold, links, inline code) is kept, each column's alignment is kept through `[center]` and `[right]`, and the header row is bold. The `prettytable` dependency is gone.
+
+## Installation
+
+Prebuilt executables for Linux, Windows and macOS (Intel and Apple Silicon) are attached to [the releases](https://github.com/mehdiym/md2nexus/releases/latest) of this fork; those of upstream and its Homebrew tap don't include the changes above. With Rust installed, you can also build from source:
 
 ```shell
-brew tap ceejbot/tap
-brew install md2nexus
-```
-
-If you have rust installed and prefer to build from source:
-
-```shell
-gh repo clone ceejbot/md2nexus
+git clone https://github.com/mehdiym/md2nexus
 cd md2nexus
-cargo build --release
+cargo install --path .
 
 # once installed:
 md2nexus --help
@@ -37,7 +39,7 @@ If the input option is a _directory_, `md2nexus` converts all markdown files in 
 
 ## Notes on conversion
 
-Markdown is far more expressive than Nexus bbcode, which is a stunted bbcode variation. This tool converts some Markdown concepts to code blocks to make them work. For example, to handle Markdown tables, this tool uses a table output formatter intended for terminal usage and wraps it all in a code block.
+Markdown is far more expressive than Nexus bbcode, which is a stunted bbcode variation. This tool converts some Markdown concepts to code blocks to make them work. Markdown tables become Nexus `[table]` tags, the header row in bold, with each column's alignment kept through `[center]` and `[right]`.
 
 Github-flavored markdown is supported. [MDX](https://mdxjs.com) is not supported at all, as Nexus bbcode doesn't allow components or javascript or indeed any potentially dangerous user-generated content.
 
@@ -70,4 +72,4 @@ The heavy lifting is done by the [markdown](https://lib.rs/crates/markdown) crat
 
 ## LICENSE
 
-GPL-3.0.
+GPL-3.0. Copyright (C) 2023 C J Silverio; fork changes copyright (C) 2026 Mehdi Yousfi-Monod.
