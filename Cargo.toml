@@ -1,6 +1,6 @@
 [package]
 name = "md2nexus"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2021"
 authors = ["C J Silverio <ceejceej@gmail.com>", "Mehdi Yousfi-Monod"]
 description = "A command-line tool to convert gfm markdown to NexusMods-flavored bbcode."
