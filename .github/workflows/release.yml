@@ -54,15 +54,16 @@ jobs:
           name="md2nexus-mym-${{ github.ref_name }}-${{ matrix.platform }}"
           mkdir "$name"
           cp README.md CHANGELOG.md LICENSE "$name"/
+          # Zip on every platform: Nexus takes no tar.gz. Info-ZIP's zip keeps the executable bit,
+          # which unzip restores; the Windows runner has 7z but no zip.
           if [ "${{ runner.os }}" = Windows ]; then
             cp "target/${{ matrix.target }}/release/md2nexus.exe" "$name"/
             7z a "$name.zip" "$name"
-            echo "ASSET=$name.zip" >> "$GITHUB_ENV"
           else
             cp "target/${{ matrix.target }}/release/md2nexus" "$name"/
-            tar czf "$name.tar.gz" "$name"
-            echo "ASSET=$name.tar.gz" >> "$GITHUB_ENV"
+            zip -qr "$name.zip" "$name"
           fi
+          echo "ASSET=$name.zip" >> "$GITHUB_ENV"
       - name: Attach to the release
         shell: bash
         env:
