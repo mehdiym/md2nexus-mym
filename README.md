@@ -8,7 +8,9 @@ md2nexus - mym Edit is a fork of [ceejbot/md2nexus](https://github.com/ceejbot/m
 
 ## Installation
 
-Prebuilt executables for Linux, Windows and macOS (Intel and Apple Silicon) are attached to [the releases](https://github.com/mehdiym/md2nexus-mym/releases/latest) of this edit; those of upstream and its Homebrew tap install the original version. With Rust installed, you can also build from source:
+Prebuilt executables are attached to [the releases](https://github.com/mehdiym/md2nexus-mym/releases/latest) of this edit, in a single zip archive with a folder per system: take `md2nexus` from `linux-x86_64` on Linux, from `macos` on macOS (Intel and Apple Silicon alike), or `md2nexus.exe` from `windows-x86_64` on Windows, and put it in a folder of your `PATH`. On macOS, an executable downloaded with a browser is blocked as unsigned: run `xattr -d com.apple.quarantine md2nexus` once, or allow it in System Settings, Privacy & Security.
+
+The executables of upstream and its Homebrew tap install the original version. With Rust installed, you can also build from source:
 
 ```shell
 git clone https://github.com/mehdiym/md2nexus-mym

@@ -1,5 +1,6 @@
-# On a version tag, creates the GitHub release and attaches an archive of the executable for
-# each platform below, with the README, the changelog and the license.
+# On a version tag, builds the executable for each platform below and creates the GitHub release
+# with a single zip archive holding them all, one folder per platform, with the README, the
+# changelog and the license: Nexus takes one archive per file, and no tar.gz.
 name: Release
 
 on:
@@ -11,61 +12,76 @@ permissions:
   contents: write
 
 jobs:
-  create-release:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Create the release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" --title "${{ github.ref_name }}" --generate-notes
-
   build:
-    needs: create-release
     strategy:
       fail-fast: false
       matrix:
-        # platform names the archive, for those downloading it: Rust's target triples are less
-        # readable (x86_64-unknown-linux-gnu, where unknown is the vendor field).
+        # platform names the executable's folder in the archive, for those downloading it: Rust's
+        # target triples are less readable (x86_64-unknown-linux-gnu, where unknown is the vendor
+        # field).
         include:
-          - target: x86_64-unknown-linux-gnu
+          - targets: x86_64-unknown-linux-gnu
             platform: linux-x86_64
+            bin: md2nexus
             os: ubuntu-latest
-          - target: x86_64-pc-windows-msvc
+          - targets: x86_64-pc-windows-msvc
             platform: windows-x86_64
+            bin: md2nexus.exe
             os: windows-latest
-          - target: x86_64-apple-darwin
-            platform: macos-x86_64
-            os: macos-latest
-          - target: aarch64-apple-darwin
-            platform: macos-arm64
+          # One universal executable for Intel and Apple Silicon Macs, merged by lipo.
+          - targets: x86_64-apple-darwin,aarch64-apple-darwin
+            platform: macos
+            bin: md2nexus
             os: macos-latest
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.targets }}
       - name: Build
-        run: cargo build --release --locked --target ${{ matrix.target }}
-      - name: Package
         shell: bash
         run: |
-          name="md2nexus-mym-${{ github.ref_name }}-${{ matrix.platform }}"
-          mkdir "$name"
-          cp README.md CHANGELOG.md LICENSE "$name"/
-          # Zip on every platform: Nexus takes no tar.gz. Info-ZIP's zip keeps the executable bit,
-          # which unzip restores; the Windows runner has 7z but no zip.
-          if [ "${{ runner.os }}" = Windows ]; then
-            cp "target/${{ matrix.target }}/release/md2nexus.exe" "$name"/
-            7z a "$name.zip" "$name"
+          targets="${{ matrix.targets }}"
+          for target in ${targets//,/ }; do
+            cargo build --release --locked --target "$target"
+          done
+          mkdir -p "out/${{ matrix.platform }}"
+          if [ "${{ matrix.platform }}" = macos ]; then
+            lipo -create -output out/macos/md2nexus \
+              target/x86_64-apple-darwin/release/md2nexus \
+              target/aarch64-apple-darwin/release/md2nexus
           else
-            cp "target/${{ matrix.target }}/release/md2nexus" "$name"/
-            zip -qr "$name.zip" "$name"
+            cp "target/$targets/release/${{ matrix.bin }}" "out/${{ matrix.platform }}/"
           fi
-          echo "ASSET=$name.zip" >> "$GITHUB_ENV"
-      - name: Attach to the release
-        shell: bash
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}
+          path: out/
+
+  # The release is created only once every executable is built, so that a failed build leaves
+  # no release without its archive.
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Name the archive
+        run: echo "NAME=md2nexus-mym-${{ github.ref_name }}" >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v4
+        with:
+          path: ${{ env.NAME }}
+          merge-multiple: true
+      - name: Package
+        run: |
+          cp README.md CHANGELOG.md LICENSE "$NAME"/
+          # Artifacts lose the executable bit, which zip keeps and unzip restores.
+          chmod +x "$NAME"/linux-x86_64/md2nexus "$NAME"/macos/md2nexus
+          zip -qr "$NAME.zip" "$NAME"
+          unzip -l "$NAME.zip"
+      - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.ref_name }}" "$ASSET"
+        run: |
+          gh release create "${{ github.ref_name }}" "$NAME.zip" \
+            --title "${{ github.ref_name }}" --generate-notes
