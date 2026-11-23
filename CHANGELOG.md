@@ -6,7 +6,8 @@
 - Changed: Links to a section of the page written as plain text, Nexus pages having no anchors
 - Fixed: A text looking like a Nexus tag, such as t[i] in inline code, read as markup by Nexus
 - Fixed: Building from source with cargo install failing on a newer version of a dependency
-- Improved: A single zip archive per release, with the executables of every platform, the macOS one running on Intel and Apple Silicon alike
+- Improved: Each release also offers a single zip with the executables of every platform, as on Nexus
+- Improved: One executable for macOS, running on Intel and Apple Silicon alike
 
 ##### 0.4.0
 

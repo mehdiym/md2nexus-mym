@@ -1,6 +1,7 @@
 # On a version tag, builds the executable for each platform below and creates the GitHub release
-# with a single zip archive holding them all, one folder per platform, with the README, the
-# changelog and the license: Nexus takes one archive per file, and no tar.gz.
+# with an archive per platform, as releases usually offer (tar.gz, zip on Windows), plus one zip
+# holding them all, one folder per platform, for Nexus: it takes one archive per file, and no
+# tar.gz. Each archive has the README, the changelog and the license.
 name: Release
 
 on:
@@ -74,14 +75,26 @@ jobs:
           merge-multiple: true
       - name: Package
         run: |
-          cp README.md CHANGELOG.md LICENSE "$NAME"/
-          # Artifacts lose the executable bit, which zip keeps and unzip restores.
+          # Artifacts lose the executable bit, which tar and zip keep, and unzip restores.
           chmod +x "$NAME"/linux-x86_64/md2nexus "$NAME"/macos/md2nexus
-          zip -qr "$NAME.zip" "$NAME"
-          unzip -l "$NAME.zip"
+          mkdir archives
+          for platform in linux-x86_64 macos windows-x86_64; do
+            dir="$NAME-$platform"
+            mkdir "$dir"
+            cp "$NAME/$platform"/* README.md CHANGELOG.md LICENSE "$dir"/
+            if [ "$platform" = windows-x86_64 ]; then
+              zip -qr "archives/$dir.zip" "$dir"
+            else
+              tar czf "archives/$dir.tar.gz" "$dir"
+            fi
+          done
+          cp README.md CHANGELOG.md LICENSE "$NAME"/
+          zip -qr "archives/$NAME.zip" "$NAME"
+          ls -l archives
+          unzip -l "archives/$NAME.zip"
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ github.ref_name }}" "$NAME.zip" \
+          gh release create "${{ github.ref_name }}" archives/* \
             --title "${{ github.ref_name }}" --generate-notes
