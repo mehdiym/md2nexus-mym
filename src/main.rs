@@ -11,7 +11,7 @@ use owo_colors::OwoColorize;
 
 #[derive(Clone, Debug, Parser)]
 #[clap(name = "md2nexus", version = concat!(env!("CARGO_PKG_VERSION"), " (mym Edit)"))]
-/// md2nexus - mym Edit: a command-line tool to convert gfm markdown to NexusMods-flavored bbcode.
+/// md2nexus - mym Edit: a command-line tool to convert GitHub-flavored Markdown to Nexus Mods BBCode.
 pub struct Args {
     /// Path to an input file or directory. If omitted, input is read from stdin.
     #[clap(short, long, value_name = "PATHNAME")]
@@ -27,6 +27,14 @@ pub struct Args {
     /// be read on the dark background of the Nexus.
     #[clap(short, long, value_enum, default_value_t = Theme::None)]
     theme: Theme,
+    /// Base URL of relative links, such as a repository's
+    /// 'https://github.com/<user>/<repo>/blob/<branch>/'.
+    ///
+    /// A Nexus page has no files next to it: without this option, a relative link is kept as is,
+    /// with a warning, and leads nowhere there. Links to a section of the page ('#usage') become
+    /// plain text, Nexus pages having no anchors.
+    #[clap(short, long, value_name = "URL")]
+    base_url: Option<String>,
     /// Emit completion data for your preferred shell.
     #[clap(short, long)]
     completions: Option<Shell>,
@@ -36,9 +44,10 @@ pub struct Args {
 }
 
 /// A color theme, made of two colors for a dark background.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, ValueEnum)]
 pub enum Theme {
     /// No colors.
+    #[default]
     None,
     /// Morrowind's interface: gold and parchment.
     Gold,
@@ -68,6 +77,50 @@ impl Theme {
     }
 }
 
+/// The tags Nexus renders. BBCode has no escape: a text such as `t[i]` or `[table]` in inline
+/// code would be read as a tag.
+const NEXUS_TAGS: &[&str] = &[
+    "*", "b", "center", "code", "color", "email", "font", "heading", "hr", "i", "img", "left",
+    "line", "list", "quote", "right", "s", "size", "spoiler", "sub", "sup", "table", "td", "th",
+    "tr", "u", "url", "youtube",
+];
+
+/// Break every Nexus tag found in a text with a zero-width space after its opening bracket, so
+/// Nexus shows it as written instead of reading it as markup.
+fn escape_tags(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    for (index, c) in text.char_indices() {
+        result.push(c);
+        if c != '[' {
+            continue;
+        }
+        let rest = &text[index + 1..];
+        let rest = rest.strip_prefix('/').unwrap_or(rest);
+        let end = rest.find([']', '=']).unwrap_or(rest.len());
+        if end < rest.len() && NEXUS_TAGS.contains(&rest[..end].to_lowercase().as_str()) {
+            result.push('\u{200B}');
+        }
+    }
+    result
+}
+
+/// Whether a URL is absolute: it has a scheme (`https:`, `mailto:`) or starts with `//`.
+fn is_absolute(url: &str) -> bool {
+    if url.starts_with("//") {
+        return true;
+    }
+    match url.find(':') {
+        Some(colon) => {
+            let scheme = &url[..colon];
+            scheme.starts_with(|c: char| c.is_ascii_alphabetic())
+                && scheme
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || "+-.".contains(c))
+        }
+        None => false,
+    }
+}
+
 /// Wrap a text in a color tag, or leave it as is without a color.
 fn colored(text: String, color: Option<&str>) -> String {
     match color {
@@ -79,7 +132,7 @@ fn colored(text: String, color: Option<&str>) -> String {
 /// Handle all the markdown files in a directory, converting each an.
 /// This does not yet visit subdirs, because I haven't needed that use case.
 /// This function assumes you've created the output dir already.
-fn handle_directory(dirpath: PathBuf, outpath: PathBuf, theme: Theme) -> anyhow::Result<()> {
+fn handle_directory(dirpath: PathBuf, outpath: PathBuf, options: &Options) -> anyhow::Result<()> {
     println!(
         "Converting all files in directory {}",
         dirpath.display().bold().blue()
@@ -107,7 +160,7 @@ fn handle_directory(dirpath: PathBuf, outpath: PathBuf, theme: Theme) -> anyhow:
         let file = File::open(&fpath)?;
         let mut reader = BufReader::new(file);
         reader.read_to_string(&mut data)?;
-        let result = convert_buffer(&data, theme);
+        let result = convert_buffer(&data, options);
         let mut output = File::create(&outfname)?;
         write!(output, "{result}")?;
         println!(
@@ -121,12 +174,20 @@ fn handle_directory(dirpath: PathBuf, outpath: PathBuf, theme: Theme) -> anyhow:
 }
 
 /// Given an input markdown str, emit nexus bbcode as a string.
-fn convert_buffer(input: &str, theme: Theme) -> String {
+fn convert_buffer(input: &str, options: &Options) -> String {
     // This function is infallible with the default options.
     let tree =
         to_mdast(input, &ParseOptions::gfm()).expect("failed to parse markdown as valid GFM.");
-    let mut state = State::new(theme);
+    let mut state = State::new(options.clone());
     state.render(tree)
+}
+
+/// What the command line sets for the conversion.
+#[derive(Clone, Debug, Default)]
+struct Options {
+    theme: Theme,
+    /// Prefixed to relative links.
+    base_url: Option<String>,
 }
 
 /// State is the worst.
@@ -137,15 +198,17 @@ struct State {
     definitions: Vec<Definition>,
     footnotes: Vec<FootnoteDefinition>,
     theme: Theme,
+    base_url: Option<String>,
 }
 
 impl State {
-    pub fn new(theme: Theme) -> Self {
+    pub fn new(Options { theme, base_url }: Options) -> Self {
         State {
             tight: false,
             definitions: Vec::new(),
             footnotes: Vec::new(),
             theme,
+            base_url,
         }
     }
 
@@ -162,7 +225,12 @@ impl State {
                     } else {
                         def.identifier.clone()
                     };
-                    format!("\n^{}: [url={}]{}[/url]", def.identifier, def.url, anchor)
+                    format!(
+                        "\n^{}: [url={}]{}[/url]",
+                        def.identifier,
+                        self.resolve(&def.url),
+                        anchor
+                    )
                 })
                 .collect::<Vec<String>>()
                 .join("\n");
@@ -192,6 +260,25 @@ impl State {
             .map(|xs| self.render_node(xs))
             .collect::<Vec<String>>()
             .join("")
+    }
+
+    /// The URL of a link or an image on the Nexus page: a relative one is prefixed with the base
+    /// URL, or kept as is with a warning without one.
+    fn resolve(&self, url: &str) -> String {
+        if is_absolute(url) {
+            return url.to_string();
+        }
+        let path = url
+            .strip_prefix("./")
+            .unwrap_or(url)
+            .trim_start_matches('/');
+        match self.base_url {
+            Some(ref base) => format!("{}/{path}", base.trim_end_matches('/')),
+            None => {
+                eprintln!("warning: relative link '{url}' leads nowhere on Nexus, see --base-url");
+                url.to_string()
+            }
+        }
     }
 
     /// Render an item of a tight list. Nexus turns every newline into a line break, so the
@@ -252,7 +339,7 @@ impl State {
         match node {
             Node::Root(root) => self.render_nodes(&root.children),
             Node::Paragraph(p) => format!("\n{}\n", self.render_nodes(&p.children)),
-            Node::Text(t) => t.value.clone(),
+            Node::Text(t) => escape_tags(&t.value),
             Node::BlockQuote(t) => {
                 format!("[quote]{}[/quote]\n", self.render_nodes(&t.children))
             }
@@ -275,7 +362,7 @@ impl State {
             Node::Code(t) => {
                 format!("\n[code]{}[/code]\n", t.value)
             }
-            Node::InlineCode(t) => format!("[font=Courier New]{}[/font]", t.value),
+            Node::InlineCode(t) => format!("[font=Courier New]{}[/font]", escape_tags(&t.value)),
             Node::Delete(t) => format!("[s]{}[/s]", self.render_nodes(&t.children)),
             Node::Emphasis(t) => format!("[i]{}[/i]", self.render_nodes(&t.children)),
             Node::Strong(t) => format!("[b]{}[/b]", self.render_nodes(&t.children)),
@@ -290,14 +377,17 @@ impl State {
                 format!("\n[size={size}]{text}[/size]\n\n")
             }
             Node::Html(t) => t.value.clone(),
-            Node::Image(t) => format!("[img]{}[/img]", t.url),
-            Node::Link(link) => format!(
-                "[url={}]{}[/url]",
-                link.url.clone(),
-                self.render_nodes(&link.children)
-            ),
+            Node::Image(t) => format!("[img]{}[/img]", self.resolve(&t.url)),
+            Node::Link(link) => {
+                let text = self.render_nodes(&link.children);
+                if link.url.starts_with('#') {
+                    text
+                } else {
+                    format!("[url={}]{text}[/url]", self.resolve(&link.url))
+                }
+            }
             Node::Math(t) => format!("\n[code]{}[/code]\n", t.value), // no equivalent in bbcode
-            Node::InlineMath(t) => format!("[font=Courier New]{}[/font]", t.value),
+            Node::InlineMath(t) => format!("[font=Courier New]{}[/font]", escape_tags(&t.value)),
             Node::ThematicBreak(_) => "\n\n[line]\n\n".to_string(),
             Node::Toml(t) => format!("\n[code]{}[/code]\n\n", t.value),
             Node::Yaml(t) => format!("\n[code]{}[/code]\n\n", t.value),
@@ -391,6 +481,10 @@ fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
+    let options = Options {
+        theme: args.theme,
+        base_url: args.base_url.clone(),
+    };
     if let Some(ref input) = args.input {
         if input.is_dir() {
             let output = if let Some(ref out) = args.output {
@@ -401,7 +495,7 @@ fn main() -> anyhow::Result<()> {
             if !output.exists() {
                 create_dir_all(&output)?;
             }
-            handle_directory(input.clone(), output, args.theme)?;
+            handle_directory(input.clone(), output, &options)?;
             return Ok(());
         }
     };
@@ -416,7 +510,7 @@ fn main() -> anyhow::Result<()> {
         let mut reader = BufReader::new(std::io::stdin());
         reader.read_to_string(&mut data)?;
     }
-    let result = convert_buffer(&data, args.theme);
+    let result = convert_buffer(&data, &options);
     if let Some(outpath) = args.output {
         let mut output = File::create(outpath)?;
         write!(output, "{result}")?;
@@ -429,28 +523,29 @@ fn main() -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{convert_buffer, Theme};
+    use super::{convert_buffer, Options, Theme};
+
+    fn convert(input: &str) -> String {
+        convert_buffer(input, &Options::default())
+    }
 
     #[test]
     fn nested_list_follows_its_item_text() {
         assert_eq!(
-            convert_buffer("- a\n  - b\n- c\n", Theme::None),
+            convert("- a\n  - b\n- c\n"),
             "[list]\n[*]a[list]\n[*]b\n[/list][*]c\n[/list]"
         );
     }
 
     #[test]
     fn loose_list_keeps_its_paragraphs() {
-        assert_eq!(
-            convert_buffer("- a\n\n- b\n", Theme::None),
-            "[list]\n[*]a\n[*]b\n[/list]"
-        );
+        assert_eq!(convert("- a\n\n- b\n"), "[list]\n[*]a\n[*]b\n[/list]");
     }
 
     #[test]
     fn table_uses_table_tags() {
         assert_eq!(
-            convert_buffer("| A | B |\n|:---|---:|\n| `x` | **y** |\n", Theme::None),
+            convert("| A | B |\n|:---|---:|\n| `x` | **y** |\n"),
             "[table][tr][td][b]A[/b][/td][td][right][b]B[/b][/right][/td][/tr]\
              [tr][td][font=Courier New]x[/font][/td][td][right][b]y[/b][/right][/td][/tr][/table]"
         );
@@ -459,10 +554,41 @@ mod tests {
     #[test]
     fn theme_colors_headings_and_table_header() {
         assert_eq!(
-            convert_buffer("# A\n\n### B\n\n| C |\n|---|\n| d |\n", Theme::Gold),
+            convert_buffer(
+                "# A\n\n### B\n\n| C |\n|---|\n| d |\n",
+                &Options {
+                    theme: Theme::Gold,
+                    ..Options::default()
+                }
+            ),
             "[size=6][color=#caa560]A[/color][/size]\n\n\
              [size=4][color=#dfc99f]B[/color][/size]\n\n\
              [table][tr][td][color=#dfc99f][b]C[/b][/color][/td][/tr][tr][td]d[/td][/tr][/table]"
+        );
+    }
+    #[test]
+    fn relative_links_get_the_base_url() {
+        let options = Options {
+            base_url: Some("https://example.com/repo/".to_string()),
+            ..Options::default()
+        };
+        assert_eq!(
+            convert_buffer(
+                "[a](CHANGELOG.md) [b](./docs/x.md) [c](https://x.org) [d](#usage) [e](mailto:a@b.c)",
+                &options
+            ),
+            "[url=https://example.com/repo/CHANGELOG.md]a[/url] \
+             [url=https://example.com/repo/docs/x.md]b[/url] \
+             [url=https://x.org]c[/url] d [url=mailto:a@b.c]e[/url]"
+        );
+    }
+
+    #[test]
+    fn tags_in_text_are_broken() {
+        assert_eq!(
+            convert("`t[i]` `[/table]` [x] `a[1]` `[color=red]`"),
+            "[font=Courier New]t[\u{200B}i][/font] [font=Courier New][\u{200B}/table][/font] [x] \
+             [font=Courier New]a[1][/font] [font=Courier New][\u{200B}color=red][/font]"
         );
     }
 }

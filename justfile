@@ -19,7 +19,7 @@ docs:
 
 # Install the tool into .cargo/bin
 install:
-	@cargo install --path .
+	@cargo install --locked --path .
 
 # Set the crate version and tag the repo to match.
 tag VERSION:

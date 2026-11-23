@@ -1,5 +1,12 @@
 ## md2nexus - mym Edit Changelog
 
+##### 0.5.0
+
+- Added: The "--base-url" option, prefixing relative links with your repository's address, since a Nexus page has no files next to it
+- Changed: Links to a section of the page written as plain text, Nexus pages having no anchors
+- Fixed: A text looking like a Nexus tag, such as t[i] in inline code, read as markup by Nexus
+- Fixed: Building from source with cargo install failing on a newer version of a dependency
+
 ##### 0.4.0
 
 - Added: Color themes, with the "--theme" option (gold, ember, frost, moss, arcane), coloring the headings and the header row of tables
