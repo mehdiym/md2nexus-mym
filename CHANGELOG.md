@@ -5,6 +5,7 @@
 - Added: Color themes, with the "--theme" option (gold, ember, frost, moss, arcane), coloring the headings and the header row of tables
 - Changed: Renamed md2nexus - mym Edit, the command staying md2nexus
 - Improved: The release archives include the changelog
+- Improved: Release archives named after their platform (linux-x86_64, windows-x86_64, macos-x86_64, macos-arm64)
 
 ##### 0.3.0
 
