@@ -1,5 +1,5 @@
 # On a version tag, creates the GitHub release and attaches an archive of the executable for
-# each platform below, with the README and the license.
+# each platform below, with the README, the changelog and the license.
 name: Release
 
 on:
@@ -45,9 +45,9 @@ jobs:
       - name: Package
         shell: bash
         run: |
-          name="md2nexus-${{ github.ref_name }}-${{ matrix.target }}"
+          name="md2nexus-mym-${{ github.ref_name }}-${{ matrix.target }}"
           mkdir "$name"
-          cp README.md LICENSE "$name"/
+          cp README.md CHANGELOG.md LICENSE "$name"/
           if [ "${{ runner.os }}" = Windows ]; then
             cp "target/${{ matrix.target }}/release/md2nexus.exe" "$name"/
             7z a "$name.zip" "$name"

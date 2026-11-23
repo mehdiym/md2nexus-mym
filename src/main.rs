@@ -3,15 +3,15 @@ use std::io::prelude::*;
 use std::io::BufReader;
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use clap_complete::{generate, Shell};
 use markdown::mdast::{AlignKind, Definition, FootnoteDefinition, Node, Table};
 use markdown::{to_mdast, ParseOptions};
 use owo_colors::OwoColorize;
 
 #[derive(Clone, Debug, Parser)]
-#[clap(name = "md2nexus", version)]
-/// A command-line tool to convert gfm markdown to NexusMods-flavored bbcode.
+#[clap(name = "md2nexus", version = concat!(env!("CARGO_PKG_VERSION"), " (mym Edit)"))]
+/// md2nexus - mym Edit: a command-line tool to convert gfm markdown to NexusMods-flavored bbcode.
 pub struct Args {
     /// Path to an input file or directory. If omitted, input is read from stdin.
     #[clap(short, long, value_name = "PATHNAME")]
@@ -23,6 +23,10 @@ pub struct Args {
     /// be a directory.
     #[clap(short, long, value_name = "PATHNAME")]
     output: Option<PathBuf>,
+    /// Color theme: colors the headings and the header row of tables. All the colors are made to
+    /// be read on the dark background of the Nexus.
+    #[clap(short, long, value_enum, default_value_t = Theme::None)]
+    theme: Theme,
     /// Emit completion data for your preferred shell.
     #[clap(short, long)]
     completions: Option<Shell>,
@@ -31,10 +35,51 @@ pub struct Args {
     license: bool,
 }
 
+/// A color theme, made of two colors for a dark background.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum Theme {
+    /// No colors.
+    None,
+    /// Morrowind's interface: gold and parchment.
+    Gold,
+    /// Orange and amber.
+    Ember,
+    /// Ice blue.
+    Frost,
+    /// Moss green.
+    Moss,
+    /// Violet and lavender.
+    Arcane,
+}
+
+impl Theme {
+    /// The color of the main headings (`#` and `##`), then the softer one of the smaller headings
+    /// and of the header row of tables. None for the theme without colors.
+    fn colors(self) -> Option<(&'static str, &'static str)> {
+        match self {
+            Theme::None => None,
+            // Morrowind's FontColor_color_normal and FontColor_color_header.
+            Theme::Gold => Some(("#caa560", "#dfc99f")),
+            Theme::Ember => Some(("#e8834e", "#f0b27a")),
+            Theme::Frost => Some(("#6fb3e8", "#a9cfee")),
+            Theme::Moss => Some(("#8fbf6a", "#b8d69e")),
+            Theme::Arcane => Some(("#b18fe0", "#cbb4ec")),
+        }
+    }
+}
+
+/// Wrap a text in a color tag, or leave it as is without a color.
+fn colored(text: String, color: Option<&str>) -> String {
+    match color {
+        Some(color) => format!("[color={color}]{text}[/color]"),
+        None => text,
+    }
+}
+
 /// Handle all the markdown files in a directory, converting each an.
 /// This does not yet visit subdirs, because I haven't needed that use case.
 /// This function assumes you've created the output dir already.
-fn handle_directory(dirpath: PathBuf, outpath: PathBuf) -> anyhow::Result<()> {
+fn handle_directory(dirpath: PathBuf, outpath: PathBuf, theme: Theme) -> anyhow::Result<()> {
     println!(
         "Converting all files in directory {}",
         dirpath.display().bold().blue()
@@ -62,7 +107,7 @@ fn handle_directory(dirpath: PathBuf, outpath: PathBuf) -> anyhow::Result<()> {
         let file = File::open(&fpath)?;
         let mut reader = BufReader::new(file);
         reader.read_to_string(&mut data)?;
-        let result = convert_buffer(&data);
+        let result = convert_buffer(&data, theme);
         let mut output = File::create(&outfname)?;
         write!(output, "{result}")?;
         println!(
@@ -76,11 +121,11 @@ fn handle_directory(dirpath: PathBuf, outpath: PathBuf) -> anyhow::Result<()> {
 }
 
 /// Given an input markdown str, emit nexus bbcode as a string.
-fn convert_buffer(input: &str) -> String {
+fn convert_buffer(input: &str, theme: Theme) -> String {
     // This function is infallible with the default options.
     let tree =
         to_mdast(input, &ParseOptions::gfm()).expect("failed to parse markdown as valid GFM.");
-    let mut state = State::new();
+    let mut state = State::new(theme);
     state.render(tree)
 }
 
@@ -91,14 +136,16 @@ struct State {
     tight: bool,
     definitions: Vec<Definition>,
     footnotes: Vec<FootnoteDefinition>,
+    theme: Theme,
 }
 
 impl State {
-    pub fn new() -> Self {
+    pub fn new(theme: Theme) -> Self {
         State {
             tight: false,
             definitions: Vec::new(),
             footnotes: Vec::new(),
+            theme,
         }
     }
 
@@ -169,7 +216,8 @@ impl State {
     /// Render a table with Nexus's table tags. It goes on a single line: Nexus turns every newline
     /// into a line break, which has no place between rows or cells. A column's alignment applies
     /// to each of its cells. The header row is made of bold `[td]` cells rather than `[th]`,
-    /// which Nexus renders without padding nor borders.
+    /// which Nexus renders without padding nor borders. A theme colors the header row like the
+    /// smaller headings.
     fn render_table(&mut self, table: &Table) -> String {
         let mut result = String::from("\n[table]");
         for (index, row) in table.children.iter().enumerate() {
@@ -180,7 +228,8 @@ impl State {
             for (column, cell) in row.children.iter().enumerate() {
                 let content = self.render_node(cell);
                 let content = if index == 0 {
-                    format!("[b]{content}[/b]")
+                    let color = self.theme.colors().map(|(_, minor)| minor);
+                    colored(format!("[b]{content}[/b]"), color)
                 } else {
                     content
                 };
@@ -233,10 +282,12 @@ impl State {
             Node::Heading(h) => {
                 // Nexus bbcode does not support "heading". SMH.
                 let size = (7 - h.depth).clamp(2, 6);
-                format!(
-                    "\n[size={size}]{}[/size]\n\n",
-                    self.render_nodes(&h.children)
-                )
+                let color = self
+                    .theme
+                    .colors()
+                    .map(|(major, minor)| if h.depth <= 2 { major } else { minor });
+                let text = colored(self.render_nodes(&h.children), color);
+                format!("\n[size={size}]{text}[/size]\n\n")
             }
             Node::Html(t) => t.value.clone(),
             Node::Image(t) => format!("[img]{}[/img]", t.url),
@@ -309,7 +360,7 @@ fn license() {
     println!(
         r#"
 md2nexus Copyright (C) 2023 C J Silverio
-Fork changes Copyright (C) 2026 Mehdi Yousfi-Monod
+mym Edit changes Copyright (C) 2026 Mehdi Yousfi-Monod
 
 This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU General Public License as published by the Free Software
@@ -350,7 +401,7 @@ fn main() -> anyhow::Result<()> {
             if !output.exists() {
                 create_dir_all(&output)?;
             }
-            handle_directory(input.clone(), output)?;
+            handle_directory(input.clone(), output, args.theme)?;
             return Ok(());
         }
     };
@@ -365,7 +416,7 @@ fn main() -> anyhow::Result<()> {
         let mut reader = BufReader::new(std::io::stdin());
         reader.read_to_string(&mut data)?;
     }
-    let result = convert_buffer(&data);
+    let result = convert_buffer(&data, args.theme);
     if let Some(outpath) = args.output {
         let mut output = File::create(outpath)?;
         write!(output, "{result}")?;
@@ -378,12 +429,12 @@ fn main() -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::convert_buffer;
+    use super::{convert_buffer, Theme};
 
     #[test]
     fn nested_list_follows_its_item_text() {
         assert_eq!(
-            convert_buffer("- a\n  - b\n- c\n"),
+            convert_buffer("- a\n  - b\n- c\n", Theme::None),
             "[list]\n[*]a[list]\n[*]b\n[/list][*]c\n[/list]"
         );
     }
@@ -391,7 +442,7 @@ mod tests {
     #[test]
     fn loose_list_keeps_its_paragraphs() {
         assert_eq!(
-            convert_buffer("- a\n\n- b\n"),
+            convert_buffer("- a\n\n- b\n", Theme::None),
             "[list]\n[*]a\n[*]b\n[/list]"
         );
     }
@@ -399,9 +450,19 @@ mod tests {
     #[test]
     fn table_uses_table_tags() {
         assert_eq!(
-            convert_buffer("| A | B |\n|:---|---:|\n| `x` | **y** |\n"),
+            convert_buffer("| A | B |\n|:---|---:|\n| `x` | **y** |\n", Theme::None),
             "[table][tr][td][b]A[/b][/td][td][right][b]B[/b][/right][/td][/tr]\
              [tr][td][font=Courier New]x[/font][/td][td][right][b]y[/b][/right][/td][/tr][/table]"
+        );
+    }
+
+    #[test]
+    fn theme_colors_headings_and_table_header() {
+        assert_eq!(
+            convert_buffer("# A\n\n### B\n\n| C |\n|---|\n| d |\n", Theme::Gold),
+            "[size=6][color=#caa560]A[/color][/size]\n\n\
+             [size=4][color=#dfc99f]B[/color][/size]\n\n\
+             [table][tr][td][color=#dfc99f][b]C[/b][/color][/td][/tr][tr][td]d[/td][/tr][/table]"
         );
     }
 }

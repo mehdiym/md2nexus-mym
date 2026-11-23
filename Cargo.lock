@@ -193,7 +193,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "md2nexus"
+name = "md2nexus-mym"
 version = "0.3.0"
 dependencies = [
  "anyhow",

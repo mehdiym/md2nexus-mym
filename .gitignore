@@ -1,2 +1,4 @@
 /target
 /testout
+# Jetbrains IDEs
+.idea

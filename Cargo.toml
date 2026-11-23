@@ -1,15 +1,15 @@
 [package]
-name = "md2nexus"
+name = "md2nexus-mym"
 version = "0.3.0"
 edition = "2021"
 authors = ["C J Silverio <ceejceej@gmail.com>", "Mehdi Yousfi-Monod"]
-description = "A command-line tool to convert gfm markdown to NexusMods-flavored bbcode."
+description = "md2nexus - mym Edit: a command-line tool to convert gfm markdown to NexusMods-flavored bbcode."
 readme = "README.md"
 license = "GPL-3.0"
 categories = ["command-line-utilities"]
 keywords = ["cli", "markdown", "bbcode"]
-repository = "https://github.com/mehdiym/md2nexus"
-homepage = "https://github.com/mehdiym/md2nexus"
+repository = "https://github.com/mehdiym/md2nexus-mym"
+homepage = "https://github.com/mehdiym/md2nexus-mym"
 
 [[bin]]
 name = "md2nexus"
