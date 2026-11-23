@@ -37,3 +37,7 @@ tag VERSION:
 	git commit Cargo.toml Cargo.lock -m "${version}"
 	git tag "${version}"
 	echo "Release tagged for version ${version}"
+
+# Redraw the README's preview of each color theme, after changing a palette.
+previews:
+	@tools/theme-previews.sh

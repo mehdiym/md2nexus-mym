@@ -44,16 +44,16 @@ md2nexus -b https://github.com/<user>/<repo>/blob/<branch>/ -i README.md -o READ
 
 ## Color Themes
 
-By default the output has no colors, like upstream's. `--theme <NAME>` (or `-t`) colors the headings and the header row of tables with one of these palettes, made to be read on the dark background of the Nexus: the main color goes to the `#` and `##` headings, the softer one to the smaller headings and the header row of tables.
+By default the output has no colors, like upstream's. `--theme <NAME>` (or `-t`) colors the headings and the header row of tables with one of these palettes, made to be read on the dark background of the Nexus: the main color goes to the `#` and `##` headings, the softer one to the smaller headings and the header row of tables. The previews show them on a background close to the Nexus's.
 
-| Theme    | Main color | Soft color | Look                                   |
-|:---------|:-----------|:-----------|:---------------------------------------|
-| `none`   |            |            | no colors (the default)                |
-| `gold`   | `#caa560`  | `#dfc99f`  | Morrowind's interface: gold, parchment |
-| `ember`  | `#e8834e`  | `#f0b27a`  | orange and amber                       |
-| `frost`  | `#6fb3e8`  | `#a9cfee`  | ice blue                               |
-| `moss`   | `#8fbf6a`  | `#b8d69e`  | moss green                             |
-| `arcane` | `#b18fe0`  | `#cbb4ec`  | violet and lavender                    |
+| Theme    | Main color | Soft color | Look                                   | Preview |
+|:---------|:-----------|:-----------|:---------------------------------------|:--------|
+| `none`   |            |            | no colors (the default)                | ![none](https://raw.githubusercontent.com/mehdiym/md2nexus-mym/latest/docs/themes/none.png) |
+| `gold`   | `#caa560`  | `#dfc99f`  | Morrowind's interface: gold, parchment | ![gold](https://raw.githubusercontent.com/mehdiym/md2nexus-mym/latest/docs/themes/gold.png) |
+| `ember`  | `#e8834e`  | `#f0b27a`  | orange and amber                       | ![ember](https://raw.githubusercontent.com/mehdiym/md2nexus-mym/latest/docs/themes/ember.png) |
+| `frost`  | `#6fb3e8`  | `#a9cfee`  | ice blue                               | ![frost](https://raw.githubusercontent.com/mehdiym/md2nexus-mym/latest/docs/themes/frost.png) |
+| `moss`   | `#8fbf6a`  | `#b8d69e`  | moss green                             | ![moss](https://raw.githubusercontent.com/mehdiym/md2nexus-mym/latest/docs/themes/moss.png) |
+| `arcane` | `#b18fe0`  | `#cbb4ec`  | violet and lavender                    | ![arcane](https://raw.githubusercontent.com/mehdiym/md2nexus-mym/latest/docs/themes/arcane.png) |
 
 ```shell
 md2nexus -t gold -i README.md -o README.bbcode
