@@ -4,7 +4,7 @@ md2nexus is a command-line tool that converts Markdown to the [BBCode](https://w
 
 ## About This Edit
 
-md2nexus - mym Edit is a fork of [ceejbot/md2nexus](https://github.com/ceejbot/md2nexus) by C J Silverio, maintained by Mehdi Yousfi-Monod (mym) since upstream went quiet after version 0.2.1. It keeps the `md2nexus` command and its options, so it replaces the original as is. It renders nested lists without the empty line Nexus showed before them, tables with Nexus's table tags, and can color the headings with a theme. The [changelog](CHANGELOG.md) details the changes per version.
+md2nexus - mym Edit is a fork of [ceejbot/md2nexus](https://github.com/ceejbot/md2nexus) by C J Silverio, maintained by Mehdi Yousfi-Monod (mym) since upstream went quiet after version 0.2.1. It keeps the `md2nexus` command and its options, so it replaces the original as is. It renders nested lists without the empty line Nexus showed before them, tables with Nexus's table tags, and can color the headings with a theme. The [changelog](https://github.com/mehdiym/md2nexus-mym/blob/latest/CHANGELOG.md) details the changes per version.
 
 ## Installation
 
@@ -34,10 +34,10 @@ If you don't specify an input file, `md2nexus` reads stdin. If you don't specify
 
 If the input is a _directory_, `md2nexus` converts each `.md` file in it (not in its subdirectories) to a `.bbcode` file of the same name, written to the output directory, which is created if missing, or to the current directory without `-o`. It prints the names of the converted files.
 
-A Nexus page has no files next to it: `--base-url <URL>` (or `-b`) prefixes relative links with the URL of your repository, so that a link to `CHANGELOG.md` works both on the repository and on the Nexus page. Without it, a relative link is kept as is, with a warning. This README is converted with:
+A Nexus page has no files next to it: a relative link, such as one to `CHANGELOG.md`, leads nowhere there, and `md2nexus` warns about it. Either write it as an absolute URL, as this README does, or let `--base-url <URL>` (or `-b`) prefix the relative links with the URL of your repository's files:
 
 ```shell
-md2nexus -t frost -b https://github.com/mehdiym/md2nexus-mym/blob/latest/ -i README.md -o README.bbcode
+md2nexus -b https://github.com/<user>/<repo>/blob/<branch>/ -i README.md -o README.bbcode
 ```
 
 ## Color Themes
@@ -64,7 +64,7 @@ GitHub-flavored Markdown is supported. It is far more expressive than Nexus BBCo
 - Tables become Nexus table tags, the header row in bold, each column's alignment kept through center and right tags.
 - Math and front matter (YAML, TOML) become code blocks.
 - Footnotes and link references are not converted into usable links: they are written as text, their definitions at the end of the document.
-- Links to a section of the page (`#usage`) become plain text: a Nexus page has no anchors. Relative links need `--base-url`, see [Usage](#usage).
+- Links to a section of the page (`#usage`) become plain text: a Nexus page has no anchors. Relative links need an absolute URL or `--base-url`, see [Usage](#usage).
 - BBCode has no escape: a text that looks like a Nexus tag, such as `t[i]` in inline code, gets a zero-width space after its bracket so Nexus shows it as written. It stays invisible but is copied with the text. Code blocks are left as they are.
 
 [MDX](https://mdxjs.com) is not supported at all, as Nexus BBCode doesn't allow components or JavaScript or indeed any potentially dangerous user-generated content.
